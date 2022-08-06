@@ -1,7 +1,8 @@
 import create from 'zustand';
-import { Alchemy, RPCAccessor } from '../accessors/on-chain-accessor';
+import { Alchemy, RPCAccessor, TokenMetadataCache } from '../accessors/on-chain-accessor';
 import { LocalStorage, StorageAccessor } from '../accessors/storage-accessor';
 import { ConnectError, SignError, TallyWallet, WalletAccessor } from '../accessors/wallet-accessor';
+import { BigNumber } from 'ethers';
 
 export type Message = {
     author: string;
@@ -16,8 +17,9 @@ export type Token = {
         symbol: string;
         address: string;
         name: string;
+        decimals: number;
     }
-    amount: number;
+    amount: BigNumber;
 }
 
 export enum SignInError {
@@ -59,7 +61,7 @@ export const initStore =
         create<AppState>((set, get) => {
             function signOut() {
                 storage.set({user: undefined});
-                set({signedInAs: undefined, messages: [], tokens: []});
+                set({signedInAs: undefined, tokens: []});
             }
 
             const messages = (storage.get('messages') ?? []).filter(({author, signature, message}) =>
@@ -76,12 +78,26 @@ export const initStore =
                 }
             }
 
+            const tokenMetadataCache: TokenMetadataCache = {
+                get: contractAddress => {
+                    const cache = storage.get('tokenMetadata') ?? {};
+                    return cache[contractAddress]
+                },
+                set: (contractAddress, metadata) => {
+                    const cache = storage.get('tokenMetadata') ?? {};
+                    cache[contractAddress] = metadata;
+                    storage.set({tokenMetadata: cache});
+                }
+            }
+
             return {
                 signedInAs,
                 signIn: async () => {
                     const result = await wallet.connect();
                     if (result.connected) {
                         const {address, signInMessage, signInSignature} = result;
+                        console.log('got result');
+                        console.log(result);
                         storage.set({user: {address, signInMessage, signInSignature}});
                         set({signedInAs: address});
                         return {success: true, address};
@@ -112,7 +128,7 @@ export const initStore =
                             message,
                             time: Date.now()
                         };
-                        const messages: Message[] = [...oldMessages, signedMessaged];
+                        const messages: Message[] = [signedMessaged, ...oldMessages];
                         storage.set({messages});
                         set({messages});
                         return {success: true};
@@ -132,7 +148,8 @@ export const initStore =
                     const { signedInAs } = get();
                     if (signedInAs === undefined)
                         return;
-                    const tokens = await onChain.loadTokens(signedInAs);
+                    const tokens = await onChain.loadTokens(signedInAs, tokenMetadataCache);
+                    storage.set({tokens});
                     set({tokens});
                 }
             }

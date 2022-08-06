@@ -1,4 +1,4 @@
-import { Message } from "../state/state";
+import { Message, Token } from "../state/state";
 
 export interface StorageState {
     user: {
@@ -7,6 +7,9 @@ export interface StorageState {
         signInMessage: string;
     };
     messages: Message[];
+    tokens: Token[];
+    // Cache this so we don't need to continuously refetch. Key is contract address.
+    tokenMetadata: Record<string, Token['metadata']>;
 }
 
 export interface StorageAccessor {
